@@ -17,7 +17,16 @@ class MainEntryTests(unittest.TestCase):
 
         self.assertEqual(rc, 7)
         self.assertEqual(run_doctor.call_count, 1)
+        self.assertEqual(run_doctor.call_args.kwargs, {"apply_fixes": False})
         self.assertEqual(load_config.call_count, 0)
+
+    def test_doctor_fix_flag_is_forwarded(self) -> None:
+        with patch("vibemouse.main.run_doctor", return_value=0) as run_doctor:
+            rc = main(["doctor", "--fix"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(run_doctor.call_count, 1)
+        self.assertEqual(run_doctor.call_args.kwargs, {"apply_fixes": True})
 
     def test_default_invocation_runs_app(self) -> None:
         app_instance = MagicMock()
@@ -46,3 +55,14 @@ class MainEntryTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual(app_instance.run.call_count, 1)
+
+    def test_deploy_subcommand_dispatches_to_deploy(self) -> None:
+        with (
+            patch("vibemouse.main.run_deploy", return_value=5) as run_deploy,
+            patch("vibemouse.main.load_config") as load_config,
+        ):
+            rc = main(["deploy", "--dry-run"])
+
+        self.assertEqual(rc, 5)
+        self.assertEqual(run_deploy.call_count, 1)
+        self.assertEqual(load_config.call_count, 0)
