@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import shlex
 import subprocess
 import time
 from typing import Protocol, cast
@@ -19,7 +20,14 @@ from vibemouse.system_integration import (
 
 
 class TextOutput:
-    def __init__(self, *, system_integration: SystemIntegration | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        system_integration: SystemIntegration | None = None,
+        openclaw_command: str = "openclaw",
+        openclaw_agent: str | None = None,
+        openclaw_timeout_s: float = 20.0,
+    ) -> None:
         try:
             keyboard_module = importlib.import_module("pynput.keyboard")
         except Exception as error:
@@ -46,6 +54,9 @@ class TextOutput:
             else create_system_integration()
         )
         self._hyprland_session: bool = self._system_integration.is_hyprland
+        self._openclaw_command: str = openclaw_command
+        self._openclaw_agent: str | None = openclaw_agent
+        self._openclaw_timeout_s: float = max(0.5, openclaw_timeout_s)
 
     def send_enter(self, *, mode: str = "enter") -> None:
         normalized = mode.strip().lower()
@@ -83,6 +94,51 @@ class TextOutput:
             except Exception:
                 return "clipboard"
         return "clipboard"
+
+    def send_to_openclaw(self, text: str) -> str:
+        normalized = text.strip()
+        if not normalized:
+            return "empty"
+
+        command = self._build_openclaw_command(normalized)
+        if command is None:
+            pyperclip.copy(normalized)
+            return "clipboard"
+
+        try:
+            _ = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            pyperclip.copy(normalized)
+            return "clipboard"
+
+        return "openclaw"
+
+    def _build_openclaw_command(self, message: str) -> list[str] | None:
+        raw_command = str(getattr(self, "_openclaw_command", "openclaw")).strip()
+        if not raw_command:
+            return None
+
+        try:
+            parts = shlex.split(raw_command)
+        except ValueError:
+            return None
+
+        if not parts:
+            return None
+
+        command = [*parts, "agent", "--message", message, "--json"]
+        agent = getattr(self, "_openclaw_agent", None)
+        if isinstance(agent, str):
+            normalized_agent = agent.strip()
+            if normalized_agent:
+                command.extend(["--agent", normalized_agent])
+        return command
 
     def _paste_clipboard(self) -> None:
         terminal_active = self._is_hyprland_terminal_active()

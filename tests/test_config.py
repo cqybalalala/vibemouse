@@ -27,6 +27,9 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.button_debounce_ms, 150)
         self.assertTrue(config.prewarm_on_start)
         self.assertEqual(config.status_file.name, "vibemouse-status.json")
+        self.assertEqual(config.openclaw_command, "openclaw")
+        self.assertEqual(config.openclaw_agent, "main")
+        self.assertEqual(config.openclaw_timeout_s, 20.0)
         self.assertEqual(config.front_button, "x1")
         self.assertEqual(config.rear_button, "x2")
 
@@ -197,6 +200,46 @@ class LoadConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError,
                 "VIBEMOUSE_FRONT_BUTTON must be either 'x1' or 'x2'",
+            ):
+                _ = load_config()
+
+    def test_openclaw_fields_can_be_configured(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "VIBEMOUSE_OPENCLAW_COMMAND": "openclaw --profile prod",
+                "VIBEMOUSE_OPENCLAW_AGENT": "ops-bot",
+                "VIBEMOUSE_OPENCLAW_TIMEOUT_S": "7.5",
+            },
+            clear=True,
+        ):
+            config = load_config()
+
+        self.assertEqual(config.openclaw_command, "openclaw --profile prod")
+        self.assertEqual(config.openclaw_agent, "ops-bot")
+        self.assertEqual(config.openclaw_timeout_s, 7.5)
+
+    def test_empty_openclaw_command_is_rejected(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"VIBEMOUSE_OPENCLAW_COMMAND": "   "},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "VIBEMOUSE_OPENCLAW_COMMAND must not be empty",
+            ):
+                _ = load_config()
+
+    def test_non_positive_openclaw_timeout_is_rejected(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"VIBEMOUSE_OPENCLAW_TIMEOUT_S": "0"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "VIBEMOUSE_OPENCLAW_TIMEOUT_S must be a positive float",
             ):
                 _ = load_config()
 

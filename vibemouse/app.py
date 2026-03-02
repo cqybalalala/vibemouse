@@ -4,6 +4,7 @@ import json
 import subprocess
 import threading
 from pathlib import Path
+from typing import Literal
 
 from vibemouse.audio import AudioRecorder, AudioRecording
 from vibemouse.config import AppConfig
@@ -11,6 +12,9 @@ from vibemouse.mouse_listener import SideButtonListener
 from vibemouse.output import TextOutput
 from vibemouse.system_integration import SystemIntegration, create_system_integration
 from vibemouse.transcriber import SenseVoiceTranscriber
+
+
+TranscriptionTarget = Literal["default", "openclaw"]
 
 
 class VoiceMouseApp:
@@ -28,7 +32,10 @@ class VoiceMouseApp:
         )
         self._transcriber: SenseVoiceTranscriber = SenseVoiceTranscriber(config)
         self._output: TextOutput = TextOutput(
-            system_integration=self._system_integration
+            system_integration=self._system_integration,
+            openclaw_command=config.openclaw_command,
+            openclaw_agent=config.openclaw_agent,
+            openclaw_timeout_s=config.openclaw_timeout_s,
         )
         self._listener: SideButtonListener = SideButtonListener(
             on_front_press=self._on_front_press,
@@ -65,7 +72,7 @@ class VoiceMouseApp:
             + f"gesture_freeze_pointer={self._config.gesture_freeze_pointer}, "
             + f"gesture_restore_cursor={self._config.gesture_restore_cursor}, "
             + f"prewarm_on_start={self._config.prewarm_on_start}. "
-            + "Press side-front to start/stop recording, side-rear to send Enter."
+            + "Press side-front to start/stop recording. While recording, side-rear sends transcript to OpenClaw; otherwise side-rear sends Enter."
         )
         self._maybe_prewarm_transcriber()
         try:
@@ -103,20 +110,31 @@ class VoiceMouseApp:
             return
 
         try:
-            recording = self._recorder.stop_and_save()
+            recording = self._stop_recording()
         except Exception as error:
-            self._set_recording_status(False)
             print(f"Failed to stop recording: {error}")
             return
 
-        self._set_recording_status(False)
         if recording is None:
-            print("Recording was empty and has been discarded")
             return
 
-        self._start_transcription_worker(recording)
+        self._start_transcription_worker(recording, output_target="default")
 
     def _on_rear_press(self) -> None:
+        if self._recorder.is_recording:
+            try:
+                recording = self._stop_recording()
+            except Exception as error:
+                print(f"Failed to stop recording from rear button: {error}")
+                return
+
+            if recording is None:
+                return
+
+            print("Recording stopped by rear button, sending transcript to OpenClaw")
+            self._start_transcription_worker(recording, output_target="openclaw")
+            return
+
         try:
             self._output.send_enter(mode=self._config.enter_mode)
             if self._config.enter_mode == "none":
@@ -199,17 +217,39 @@ class VoiceMouseApp:
 
         return proc.returncode == 0 and proc.stdout.strip() == "ok"
 
-    def _start_transcription_worker(self, recording: AudioRecording) -> None:
+    def _stop_recording(self) -> AudioRecording | None:
+        try:
+            recording = self._recorder.stop_and_save()
+        except Exception as error:
+            self._set_recording_status(False)
+            raise RuntimeError(error) from error
+
+        self._set_recording_status(False)
+        if recording is None:
+            print("Recording was empty and has been discarded")
+            return None
+        return recording
+
+    def _start_transcription_worker(
+        self,
+        recording: AudioRecording,
+        *,
+        output_target: TranscriptionTarget,
+    ) -> None:
         worker = threading.Thread(
             target=self._transcribe_and_output,
-            args=(recording,),
+            args=(recording, output_target),
             daemon=True,
         )
         with self._workers_lock:
             self._workers.add(worker)
         worker.start()
 
-    def _transcribe_and_output(self, recording: AudioRecording) -> None:
+    def _transcribe_and_output(
+        self,
+        recording: AudioRecording,
+        output_target: TranscriptionTarget,
+    ) -> None:
         current = threading.current_thread()
         try:
             print(f"Recording stopped ({recording.duration_s:.1f}s), transcribing...")
@@ -220,12 +260,30 @@ class VoiceMouseApp:
                 print("No speech recognized")
                 return
 
-            route = self._output.inject_or_clipboard(
-                text,
-                auto_paste=self._config.auto_paste,
-            )
+            if output_target == "openclaw":
+                route = self._output.send_to_openclaw(text)
+            else:
+                route = self._output.inject_or_clipboard(
+                    text,
+                    auto_paste=self._config.auto_paste,
+                )
+
             device = self._transcriber.device_in_use
             backend = self._transcriber.backend_in_use
+
+            if output_target == "openclaw":
+                if route == "openclaw":
+                    print(f"Transcribed with {backend} on {device}, sent to OpenClaw")
+                elif route == "clipboard":
+                    print(
+                        f"Transcribed with {backend} on {device}, OpenClaw unavailable so copied to clipboard"
+                    )
+                else:
+                    print(
+                        f"Transcribed with {backend} on {device}, but OpenClaw output was empty"
+                    )
+                return
+
             if route == "typed":
                 print(
                     f"Transcribed with {backend} on {device}, typed into focused input"

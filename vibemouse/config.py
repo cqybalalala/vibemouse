@@ -23,6 +23,16 @@ def _read_int(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an integer, got {raw!r}") from error
 
 
+def _read_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError as error:
+        raise ValueError(f"{name} must be a float, got {raw!r}") from error
+
+
 def _read_button(name: str, default: str) -> str:
     value = os.getenv(name, default).strip().lower()
     if value not in {"x1", "x2"}:
@@ -39,6 +49,12 @@ def _require_positive(name: str, value: int) -> int:
 def _require_non_negative(name: str, value: int) -> int:
     if value < 0:
         raise ValueError(f"{name} must be a non-negative integer, got {value}")
+    return value
+
+
+def _require_positive_float(name: str, value: float) -> float:
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive float, got {value}")
     return value
 
 
@@ -80,6 +96,9 @@ class AppConfig:
     trust_remote_code: bool
     prewarm_on_start: bool
     status_file: Path
+    openclaw_command: str
+    openclaw_agent: str | None
+    openclaw_timeout_s: float
     front_button: str
     rear_button: str
     temp_dir: Path
@@ -158,6 +177,15 @@ def load_config() -> AppConfig:
         "enter",
         {"enter", "ctrl_enter", "shift_enter", "none"},
     )
+    openclaw_command = os.getenv("VIBEMOUSE_OPENCLAW_COMMAND", "openclaw").strip()
+    if not openclaw_command:
+        raise ValueError("VIBEMOUSE_OPENCLAW_COMMAND must not be empty")
+    openclaw_agent_raw = os.getenv("VIBEMOUSE_OPENCLAW_AGENT", "main").strip()
+    openclaw_agent = openclaw_agent_raw if openclaw_agent_raw else None
+    openclaw_timeout_s = _require_positive_float(
+        "VIBEMOUSE_OPENCLAW_TIMEOUT_S",
+        _read_float("VIBEMOUSE_OPENCLAW_TIMEOUT_S", 20.0),
+    )
 
     return AppConfig(
         sample_rate=sample_rate,
@@ -188,6 +216,9 @@ def load_config() -> AppConfig:
         trust_remote_code=_read_bool("VIBEMOUSE_TRUST_REMOTE_CODE", False),
         prewarm_on_start=_read_bool("VIBEMOUSE_PREWARM_ON_START", True),
         status_file=status_file,
+        openclaw_command=openclaw_command,
+        openclaw_agent=openclaw_agent,
+        openclaw_timeout_s=openclaw_timeout_s,
         front_button=front_button,
         rear_button=rear_button,
         temp_dir=temp_dir,
