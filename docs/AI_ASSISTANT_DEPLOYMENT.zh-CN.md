@@ -76,6 +76,20 @@ Python 依赖版本以 `pyproject.toml` 为准。
 
 ## 5）部署步骤（可直接让 AI 助手执行）
 
+最快部署路径（推荐）：
+
+```bash
+bash scripts/auto-deploy.sh --preset stable
+```
+
+预设可选：`stable`、`fast`、`low-resource`。
+
+也可以直接用 deploy 子命令：
+
+```bash
+vibemouse deploy --preset stable
+```
+
 1. 安装项目
 ```bash
 python3 -m venv .venv
@@ -87,6 +101,7 @@ pip install -e .
 2. 先跑自检
 ```bash
 vibemouse doctor
+vibemouse doctor --fix
 ```
 
 3. 验证 OpenClaw

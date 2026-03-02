@@ -78,6 +78,20 @@ The project’s pinned Python dependencies are defined in `pyproject.toml`.
 
 ## 5) Deployment Procedure (Assistant-Executable)
 
+Fastest path (recommended):
+
+```bash
+bash scripts/auto-deploy.sh --preset stable
+```
+
+Preset choices: `stable`, `fast`, `low-resource`.
+
+Direct command alternative:
+
+```bash
+vibemouse deploy --preset stable
+```
+
 1. Clone and install
 ```bash
 python3 -m venv .venv
@@ -89,6 +103,7 @@ pip install -e .
 2. Run diagnostics first
 ```bash
 vibemouse doctor
+vibemouse doctor --fix
 ```
 
 3. Ensure OpenClaw route works

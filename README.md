@@ -70,6 +70,33 @@ export VIBEMOUSE_DEVICE=cpu
 vibemouse
 ```
 
+### One-command auto deploy (recommended)
+
+```bash
+bash scripts/auto-deploy.sh --preset stable
+```
+
+This command bootstraps `.venv`, installs VibeMouse, generates service/env files,
+enables `systemd --user` service, and runs `vibemouse doctor`.
+
+Available presets:
+- `stable`: balanced daily-driver defaults
+- `fast`: lower debounce + higher OpenClaw retries
+- `low-resource`: lower background footprint defaults
+
+Examples:
+
+```bash
+# High reliability profile
+bash scripts/auto-deploy.sh --preset stable
+
+# Keep resources low
+bash scripts/auto-deploy.sh --preset low-resource
+
+# Custom OpenClaw target assistant
+bash scripts/auto-deploy.sh --preset stable --openclaw-agent ops
+```
+
 ## Default Mapping and State Logic
 
 - `VIBEMOUSE_FRONT_BUTTON` default: `x1`
@@ -110,6 +137,12 @@ Run diagnostics:
 vibemouse doctor
 ```
 
+Apply safe auto-fixes first, then re-check:
+
+```bash
+vibemouse doctor --fix
+```
+
 Current checks include:
 - Config load validity
 - OpenClaw command resolution + agent existence
@@ -118,7 +151,27 @@ Current checks include:
 - Hyprland rear-button Return bind conflicts
 - `systemctl --user` service activity
 
+Current auto-fixes (`--fix`) include:
+- Auto-disable conflicting Hyprland side-button Return binds
+- Attempt to restart inactive `vibemouse.service`
+
 Exit code is non-zero when any `FAIL` check exists.
+
+## Deploy Command
+
+The deploy command is scriptable and can be used directly:
+
+```bash
+vibemouse deploy --preset stable
+```
+
+Useful flags:
+- `--preset stable|fast|low-resource`
+- `--openclaw-command "openclaw --profile prod"`
+- `--openclaw-agent main`
+- `--openclaw-retries 2`
+- `--skip-systemctl`
+- `--dry-run`
 
 ## Frequently Used Variables
 

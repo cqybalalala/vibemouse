@@ -70,6 +70,33 @@ export VIBEMOUSE_DEVICE=cpu
 vibemouse
 ```
 
+### 一键自动部署（推荐）
+
+```bash
+bash scripts/auto-deploy.sh --preset stable
+```
+
+这个命令会自动完成 `.venv` 初始化、安装 VibeMouse、生成 service/env 文件、
+启用 `systemd --user` 服务并执行 `vibemouse doctor`。
+
+可选预设：
+- `stable`：日常稳定均衡
+- `fast`：更低去抖 + 更高 OpenClaw 重试
+- `low-resource`：更低后台资源占用
+
+示例：
+
+```bash
+# 稳定档
+bash scripts/auto-deploy.sh --preset stable
+
+# 低资源档
+bash scripts/auto-deploy.sh --preset low-resource
+
+# 指定你自己的 OpenClaw 助手
+bash scripts/auto-deploy.sh --preset stable --openclaw-agent ops
+```
+
 ## 默认映射与状态逻辑
 
 - `VIBEMOUSE_FRONT_BUTTON` 默认：`x1`
@@ -110,6 +137,12 @@ OpenClaw 路由可配置：
 vibemouse doctor
 ```
 
+先执行安全自动修复再复检：
+
+```bash
+vibemouse doctor --fix
+```
+
 当前检查项：
 - 配置加载是否有效
 - OpenClaw 命令是否可执行 + agent 是否存在
@@ -118,7 +151,27 @@ vibemouse doctor
 - Hyprland 后侧键 Return 冲突绑定
 - `systemctl --user` 服务状态
 
+当前 `--fix` 自动修复项：
+- 自动禁用冲突的 Hyprland 侧键 Return 绑定
+- 尝试拉起处于 inactive 状态的 `vibemouse.service`
+
 只要存在 `FAIL`，命令退出码就是非零，方便自动化检测。
+
+## Deploy 命令
+
+也可以直接用 deploy 子命令：
+
+```bash
+vibemouse deploy --preset stable
+```
+
+常用参数：
+- `--preset stable|fast|low-resource`
+- `--openclaw-command "openclaw --profile prod"`
+- `--openclaw-agent main`
+- `--openclaw-retries 2`
+- `--skip-systemctl`
+- `--dry-run`
 
 ## 常用配置项
 
