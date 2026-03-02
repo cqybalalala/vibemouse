@@ -36,6 +36,7 @@ class VoiceMouseApp:
             openclaw_command=config.openclaw_command,
             openclaw_agent=config.openclaw_agent,
             openclaw_timeout_s=config.openclaw_timeout_s,
+            openclaw_retries=config.openclaw_retries,
         )
         self._listener: SideButtonListener = SideButtonListener(
             on_front_press=self._on_front_press,
@@ -261,26 +262,31 @@ class VoiceMouseApp:
                 return
 
             if output_target == "openclaw":
-                route = self._output.send_to_openclaw(text)
+                dispatch = self._output.send_to_openclaw_result(text)
+                route = dispatch.route
+                dispatch_reason = dispatch.reason
             else:
                 route = self._output.inject_or_clipboard(
                     text,
                     auto_paste=self._config.auto_paste,
                 )
+                dispatch_reason = "n/a"
 
             device = self._transcriber.device_in_use
             backend = self._transcriber.backend_in_use
 
             if output_target == "openclaw":
                 if route == "openclaw":
-                    print(f"Transcribed with {backend} on {device}, sent to OpenClaw")
+                    print(
+                        f"Transcribed with {backend} on {device}, sent to OpenClaw ({dispatch_reason})"
+                    )
                 elif route == "clipboard":
                     print(
-                        f"Transcribed with {backend} on {device}, OpenClaw unavailable so copied to clipboard"
+                        f"Transcribed with {backend} on {device}, OpenClaw unavailable so copied to clipboard ({dispatch_reason})"
                     )
                 else:
                     print(
-                        f"Transcribed with {backend} on {device}, but OpenClaw output was empty"
+                        f"Transcribed with {backend} on {device}, but OpenClaw output was empty ({dispatch_reason})"
                     )
                 return
 

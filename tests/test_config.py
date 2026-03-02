@@ -30,6 +30,7 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.openclaw_command, "openclaw")
         self.assertEqual(config.openclaw_agent, "main")
         self.assertEqual(config.openclaw_timeout_s, 20.0)
+        self.assertEqual(config.openclaw_retries, 0)
         self.assertEqual(config.front_button, "x1")
         self.assertEqual(config.rear_button, "x2")
 
@@ -210,6 +211,7 @@ class LoadConfigTests(unittest.TestCase):
                 "VIBEMOUSE_OPENCLAW_COMMAND": "openclaw --profile prod",
                 "VIBEMOUSE_OPENCLAW_AGENT": "ops-bot",
                 "VIBEMOUSE_OPENCLAW_TIMEOUT_S": "7.5",
+                "VIBEMOUSE_OPENCLAW_RETRIES": "2",
             },
             clear=True,
         ):
@@ -218,6 +220,7 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.openclaw_command, "openclaw --profile prod")
         self.assertEqual(config.openclaw_agent, "ops-bot")
         self.assertEqual(config.openclaw_timeout_s, 7.5)
+        self.assertEqual(config.openclaw_retries, 2)
 
     def test_empty_openclaw_command_is_rejected(self) -> None:
         with patch.dict(
@@ -240,6 +243,18 @@ class LoadConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError,
                 "VIBEMOUSE_OPENCLAW_TIMEOUT_S must be a positive float",
+            ):
+                _ = load_config()
+
+    def test_negative_openclaw_retries_is_rejected(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"VIBEMOUSE_OPENCLAW_RETRIES": "-1"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "VIBEMOUSE_OPENCLAW_RETRIES must be a non-negative integer",
             ):
                 _ = load_config()
 

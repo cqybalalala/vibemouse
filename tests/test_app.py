@@ -181,6 +181,51 @@ class VoiceMouseAppButtonBehaviorTests(unittest.TestCase):
 
         self.assertEqual(send_enter_calls, ["ctrl_enter"])
 
+    def test_rear_button_state_matrix(self) -> None:
+        for is_recording in (True, False):
+            with self.subTest(is_recording=is_recording):
+                subject = self._make_subject()
+                recording = SimpleNamespace(
+                    duration_s=0.8, path=Path("/tmp/matrix.wav")
+                )
+                setattr(
+                    subject,
+                    "_recorder",
+                    SimpleNamespace(
+                        is_recording=is_recording,
+                        stop_and_save=lambda: recording,
+                    ),
+                )
+                setattr(subject, "_set_recording_status", lambda value: None)
+
+                worker_calls: list[tuple[object, str]] = []
+                send_enter_calls: list[str] = []
+                setattr(
+                    subject,
+                    "_start_transcription_worker",
+                    lambda rec, *, output_target: worker_calls.append(
+                        (rec, output_target)
+                    ),
+                )
+                setattr(
+                    subject,
+                    "_output",
+                    SimpleNamespace(
+                        send_enter=lambda mode: send_enter_calls.append(mode)
+                    ),
+                )
+                setattr(subject, "_config", SimpleNamespace(enter_mode="enter"))
+
+                on_rear = cast(Callable[[], None], getattr(subject, "_on_rear_press"))
+                on_rear()
+
+                if is_recording:
+                    self.assertEqual(worker_calls, [(recording, "openclaw")])
+                    self.assertEqual(send_enter_calls, [])
+                else:
+                    self.assertEqual(worker_calls, [])
+                    self.assertEqual(send_enter_calls, ["enter"])
+
     def test_transcribe_and_output_openclaw_uses_openclaw_sender(self) -> None:
         subject = self._make_subject()
         recording = SimpleNamespace(duration_s=1.0, path=Path("/tmp/transcribe.wav"))
@@ -200,7 +245,8 @@ class VoiceMouseAppButtonBehaviorTests(unittest.TestCase):
             subject,
             "_output",
             SimpleNamespace(
-                send_to_openclaw=lambda text: openclaw_calls.append(text) or "openclaw",
+                send_to_openclaw_result=lambda text: openclaw_calls.append(text)
+                or SimpleNamespace(route="openclaw", reason="dispatched"),
                 inject_or_clipboard=lambda text, auto_paste: inject_calls.append(
                     (text, auto_paste)
                 )
