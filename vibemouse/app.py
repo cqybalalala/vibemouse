@@ -9,6 +9,7 @@ from typing import Literal
 
 from vibemouse.audio import AudioRecorder, AudioRecording
 from vibemouse.config import AppConfig
+from vibemouse.keyboard_listener import KeyboardHotkeyListener
 from vibemouse.mouse_listener import SideButtonListener
 from vibemouse.output import TextOutput
 from vibemouse.system_integration import SystemIntegration, create_system_integration
@@ -54,6 +55,11 @@ class VoiceMouseApp:
             gesture_restore_cursor=config.gesture_restore_cursor,
             system_integration=self._system_integration,
         )
+        self._keyboard_listener: KeyboardHotkeyListener = KeyboardHotkeyListener(
+            on_hotkey=self._on_front_press,
+            keycodes=config.record_hotkey_keycodes,
+            debounce_s=config.button_debounce_ms / 1000.0,
+        )
         self._stop_event: threading.Event = threading.Event()
         self._transcribe_lock: threading.Lock = threading.Lock()
         self._workers_lock: threading.Lock = threading.Lock()
@@ -62,6 +68,7 @@ class VoiceMouseApp:
 
     def run(self) -> None:
         self._listener.start()
+        self._keyboard_listener.start()
         self._set_recording_status(False)
         _LOG.info(
             "VibeMouse ready. "
@@ -69,6 +76,7 @@ class VoiceMouseApp:
             + f"backend={self._config.transcriber_backend}, auto_paste={self._config.auto_paste}, "
             + f"enter_mode={self._config.enter_mode}, debounce_ms={self._config.button_debounce_ms}, "
             + f"front_button={self._config.front_button}, rear_button={self._config.rear_button}, "
+            + f"record_hotkey_keycodes={self._config.record_hotkey_keycodes}, "
             + f"gestures_enabled={self._config.gestures_enabled}, "
             + f"gesture_trigger={self._config.gesture_trigger_button}, "
             + f"gesture_threshold_px={self._config.gesture_threshold_px}, "
@@ -88,6 +96,7 @@ class VoiceMouseApp:
 
     def shutdown(self) -> None:
         self._listener.stop()
+        self._keyboard_listener.stop()
         self._recorder.cancel()
         self._set_recording_status(False)
         with self._workers_lock:
