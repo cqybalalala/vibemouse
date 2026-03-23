@@ -1,8 +1,15 @@
 # VibeMouse
 
-> **Fork of [vimalinx/VibeMouse](https://github.com/vimalinx/VibeMouse)** — with additional modifications.
+> **Fork of [vimalinx/VibeMouse](https://github.com/vimalinx/VibeMouse)** — with Windows support added.
 
 Mouse-side-button voice input for VibeCoding.
+
+## Windows Support (this fork)
+
+This fork adds native Windows compatibility:
+- `WindowsSystemIntegration` — active window detection, cursor position/movement, text input focus, and terminal detection via Win32 API (ctypes, no extra dependencies)
+- Keyboard hotkey listener falls back to `pynput` when `evdev` is unavailable (Windows)
+- Auto-detected at runtime: no config needed, just run on Windows and it works
 
 中文文档：[`README.zh-CN.md`](./README.zh-CN.md)
 
@@ -104,6 +111,28 @@ bash scripts/auto-deploy.sh --preset low-resource
 # Custom OpenClaw target assistant
 bash scripts/auto-deploy.sh --preset stable --openclaw-agent ops
 ```
+
+## Quick Start (Windows)
+
+### Install
+
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+pip install -U pip
+pip install -e .
+pip install pynput
+```
+
+### Run
+
+```bat
+set VIBEMOUSE_BACKEND=funasr_onnx
+set VIBEMOUSE_DEVICE=cpu
+vibemouse
+```
+
+Windows is auto-detected — no extra config needed. Gestures and workspace switching are not supported on Windows.
 
 ## Default Mapping and State Logic
 
