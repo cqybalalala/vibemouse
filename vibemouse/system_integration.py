@@ -217,6 +217,138 @@ class HyprlandSystemIntegration:
         return cast(dict[str, object], payload_obj)
 
 
+class WindowsSystemIntegration:
+    """Windows platform integration using Win32 API via ctypes."""
+
+    _TEXT_CONTROL_CLASSES: frozenset[str] = frozenset({
+        "edit",
+        "richedit20w",
+        "richedit50w",
+        "richtext",
+        "scintilla",
+        "chrome_renderwidgethosthwnd",
+        "mozillawindowclass",
+        "mozillacontentwindowclass",
+    })
+
+    _TERMINAL_CLASSES: frozenset[str] = frozenset({
+        "consolepswindow",
+        "consolewindowclass",
+        "windowsterminal",
+        "mintty",
+        "conemu",
+    })
+
+    @property
+    def is_hyprland(self) -> bool:
+        return False
+
+    def send_shortcut(self, *, mod: str, key: str) -> bool:
+        return False
+
+    def active_window(self) -> dict[str, object] | None:
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            hwnd = user32.GetForegroundWindow()
+            if not hwnd:
+                return None
+            title_buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, title_buf, 512)
+            class_buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, class_buf, 256)
+            return {"title": title_buf.value, "class": class_buf.value}
+        except Exception:
+            return None
+
+    def cursor_position(self) -> tuple[int, int] | None:
+        try:
+            import ctypes
+            import ctypes.wintypes
+            point = ctypes.wintypes.POINT()
+            if ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):  # type: ignore[attr-defined]
+                return point.x, point.y
+        except Exception:
+            pass
+        return None
+
+    def move_cursor(self, *, x: int, y: int) -> bool:
+        try:
+            import ctypes
+            return bool(ctypes.windll.user32.SetCursorPos(x, y))  # type: ignore[attr-defined]
+        except Exception:
+            return False
+
+    def switch_workspace(self, direction: str) -> bool:
+        return False
+
+    def is_text_input_focused(self) -> bool | None:
+        try:
+            import ctypes
+            import ctypes.wintypes
+
+            class GUITHREADINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", ctypes.wintypes.DWORD),
+                    ("flags", ctypes.wintypes.DWORD),
+                    ("hwndActive", ctypes.wintypes.HWND),
+                    ("hwndFocus", ctypes.wintypes.HWND),
+                    ("hwndCapture", ctypes.wintypes.HWND),
+                    ("hwndMenuOwner", ctypes.wintypes.HWND),
+                    ("hwndMoveSize", ctypes.wintypes.HWND),
+                    ("hwndCaret", ctypes.wintypes.HWND),
+                    ("rcCaret", ctypes.wintypes.RECT),
+                ]
+
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            fg_hwnd = user32.GetForegroundWindow()
+            if not fg_hwnd:
+                return True
+
+            thread_id = user32.GetWindowThreadProcessId(fg_hwnd, None)
+            info = GUITHREADINFO()
+            info.cbSize = ctypes.sizeof(GUITHREADINFO)
+            if not user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+                return True
+
+            focused_hwnd = info.hwndFocus
+            if not focused_hwnd:
+                return True
+
+            class_buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(focused_hwnd, class_buf, 256)
+            return class_buf.value.lower() in self._TEXT_CONTROL_CLASSES
+        except Exception:
+            return True
+
+    def send_enter_via_accessibility(self) -> bool | None:
+        return None
+
+    def is_terminal_window_active(self) -> bool | None:
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            fg_hwnd = user32.GetForegroundWindow()
+            if not fg_hwnd:
+                return False
+            class_buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(fg_hwnd, class_buf, 256)
+            class_lower = class_buf.value.lower()
+            title_buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(fg_hwnd, title_buf, 512)
+            title_lower = title_buf.value.lower()
+            if any(hint in class_lower for hint in self._TERMINAL_CLASSES):
+                return True
+            return any(hint in title_lower for hint in _TERMINAL_TITLE_HINTS)
+        except Exception:
+            return False
+
+    def paste_shortcuts(self, *, terminal_active: bool) -> tuple[tuple[str, str], ...]:
+        if terminal_active:
+            return (("CTRL SHIFT", "V"), ("CTRL", "V"))
+        return (("CTRL", "V"),)
+
+
 def detect_hyprland_session(*, env: Mapping[str, str] | None = None) -> bool:
     source = env if env is not None else os.environ
     desktop = source.get("XDG_CURRENT_DESKTOP", "")
@@ -233,7 +365,9 @@ def create_system_integration(
     if detect_hyprland_session(env=env):
         return HyprlandSystemIntegration()
 
-    _ = platform_name if platform_name is not None else sys.platform
+    resolved_platform = platform_name if platform_name is not None else sys.platform
+    if resolved_platform == "win32":
+        return WindowsSystemIntegration()
 
     return NoopSystemIntegration()
 

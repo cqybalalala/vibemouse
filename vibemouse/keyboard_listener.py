@@ -48,18 +48,101 @@ class KeyboardHotkeyListener:
     def _run(self) -> None:
         last_error_summary: str | None = None
         while not self._stop.is_set():
+            evdev_error: Exception | None = None
             try:
                 self._run_evdev()
                 self._reset_pressed_state()
                 continue
             except Exception as error:
-                summary = f"Keyboard hotkey listener unavailable ({error}). Retrying..."
+                evdev_error = error
+
+            try:
+                self._run_pynput(timeout_s=self._rescan_interval_s)
+                self._reset_pressed_state()
+                continue
+            except Exception as pynput_error:
+                summary = (
+                    f"Keyboard hotkey listener unavailable "
+                    f"(evdev: {evdev_error}; pynput: {pynput_error}). Retrying..."
+                )
                 if summary != last_error_summary:
                     print(summary)
                     last_error_summary = summary
                 self._reset_pressed_state()
                 if self._stop.wait(1.0):
                     return
+
+    def _run_pynput(self, *, timeout_s: float | None = None) -> None:
+        try:
+            keyboard_module = importlib.import_module("pynput.keyboard")
+        except Exception as error:
+            raise RuntimeError("pynput.keyboard is not available") from error
+
+        listener_ctor = cast(_KeyboardListenerCtor, getattr(keyboard_module, "Listener"))
+        key_class = getattr(keyboard_module, "Key")
+
+        def _keycode_for(key: object) -> int | None:
+            try:
+                vk = getattr(key, "vk", None)
+                if vk is not None:
+                    return int(vk)
+                value = getattr(key, "value", None)
+                if value is not None:
+                    vk2 = getattr(value, "vk", None)
+                    if vk2 is not None:
+                        return int(vk2)
+            except Exception:
+                pass
+            return None
+
+        combo_vks: frozenset[int] = frozenset()
+
+        def on_press(key: object) -> None:
+            nonlocal combo_vks
+            vk = _keycode_for(key)
+            if vk is None:
+                return
+            with self._state_lock:
+                self._pressed.add(vk)
+                if self._combo_latched and not self._combo.issubset(self._pressed):
+                    self._combo_latched = False
+                import time as _time
+                now = _time.monotonic()
+                if (
+                    not self._combo_latched
+                    and self._combo.issubset(self._pressed)
+                    and now - self._last_fire_monotonic >= self._debounce_s
+                ):
+                    self._combo_latched = True
+                    self._last_fire_monotonic = now
+                    should_fire = True
+                else:
+                    should_fire = False
+            if should_fire:
+                self._on_hotkey()
+
+        def on_release(key: object) -> None:
+            vk = _keycode_for(key)
+            if vk is None:
+                return
+            with self._state_lock:
+                self._pressed.discard(vk)
+                if self._combo_latched and not self._combo.issubset(self._pressed):
+                    self._combo_latched = False
+
+        listener = listener_ctor(on_press=on_press, on_release=on_release)
+        listener.start()
+        import time as _time
+        deadline: float | None = None
+        if timeout_s is not None:
+            deadline = _time.monotonic() + max(0.2, timeout_s)
+        try:
+            while not self._stop.is_set():
+                if deadline is not None and _time.monotonic() >= deadline:
+                    return
+                _time.sleep(0.2)
+        finally:
+            listener.stop()
 
     def _run_evdev(self) -> None:
         try:
@@ -179,3 +262,17 @@ class _ListDevicesFn(Protocol):
 class _Ecodes(Protocol):
     EV_KEY: int
     KEY_A: int
+
+
+class _KeyboardListener(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+
+
+class _KeyboardListenerCtor(Protocol):
+    def __call__(
+        self,
+        *,
+        on_press: Callable[[object], None] | None = None,
+        on_release: Callable[[object], None] | None = None,
+    ) -> _KeyboardListener: ...
